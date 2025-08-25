@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://psodck3bm44g"]
+
+[ext_resource type="Script" uid="uid://p5ky1djcmc0t" path="res://scripts/table_sim.gd" id="1_errlg"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_errlg")
