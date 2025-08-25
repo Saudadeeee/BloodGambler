@@ -1,9 +1,7 @@
 # res://scripts/card_utils.gd
 class_name CardUtils
 
-# Ta mã hoá 1 lá bài = số int 0..51
-# 0..12: ♠, 13..25: ♥, 26..38: ♦, 39..51: ♣
-# rank: 2..14 (14 = Ace)
+
 static func rank_of(card: int) -> int:
 	return (card % 13) + 2
 
