@@ -226,30 +226,122 @@ func _betting_round(active: Array[int], hole: Array, board: Array[int], street: 
 		idx = (idx + 1) % active.size()
 
 	return false
+func _bot_decide(
+		p, hole, board, street, need, bet_size, raises, ctx := {}
+	) -> Dictionary:
+	var strength = _rough_strength(hole, board) # 0..100
+	var hp_p = hp[p]
+	var max_raises = MAX_RAISES
 
-func _bot_decide(p: int, hole: Array, board: Array[int], street: String, need: int, bet_size: int, raises: int) -> Dictionary:
-	var strength: int = _rough_strength(hole, board) # 0..100
-	var can_raise: bool = (raises < MAX_RAISES) and (hp[p] > need + bet_size)
-	var jitter: int = rng.randi_range(-5, 5)
+	# --- Ngữ cảnh an toàn (không dùng .get / ternary) ---
+	var pot = 0
+	if typeof(ctx) == TYPE_DICTIONARY and ctx.has("pot"):
+		pot = int(ctx["pot"])
+
+	var players_in_pot = 2
+	if typeof(ctx) == TYPE_DICTIONARY and ctx.has("players_in_pot"):
+		players_in_pot = int(ctx["players_in_pot"])
+
+	var position = "mid"
+	if typeof(ctx) == TYPE_DICTIONARY and ctx.has("position"):
+		position = str(ctx["position"])
+
+	var last_aggressor = -1
+	if typeof(ctx) == TYPE_DICTIONARY and ctx.has("last_aggressor"):
+		last_aggressor = int(ctx["last_aggressor"])
+
+	var table_tightness = 0.0
+	if typeof(ctx) == TYPE_DICTIONARY and ctx.has("table_tightness"):
+		table_tightness = float(ctx["table_tightness"])
+
+	var street_idx = 0
+	if street == "preflop":
+		street_idx = 0
+	elif street == "flop":
+		street_idx = 1
+	elif street == "turn":
+		street_idx = 2
+	else:
+		street_idx = 3
+
+	# --- Khả năng hành động ---
+	var can_raise = (raises < max_raises) and (hp_p > need + bet_size)
+	var can_allin = (hp_p > 0)
+
+	# --- Nhiễu nhẹ ---
+	var jitter = rng.randi_range(-4, 4)
 	strength = clamp(strength + jitter, 0, 100)
 
-	if need == 0:
-		if strength >= 75 and can_raise:
-			return {"type": "raise"}
-		elif strength >= 90 and hp[p] <= bet_size * 2:
+	# --- Điều chỉnh theo vị trí & multiway ---
+	var pos_bonus = 0
+	match position:
+		"late":
+			pos_bonus = 8
+		"mid":
+			pos_bonus = 3
+		_:
+			pos_bonus = 0
+
+	var multiway_penalty = max(0, players_in_pot - 2) * 4
+	var tightness_penalty = int(6.0 * table_tightness)
+	var eff_strength = clamp(strength + pos_bonus - multiway_penalty - tightness_penalty, 0, 100)
+
+	# --- Ngưỡng raise theo street ---
+	var raise_threshold_by_street = [70, 65, 60, 58]
+	var raise_threshold = raise_threshold_by_street[street_idx]
+
+	# --- Pot odds ---
+	if pot <= 0:
+		pot = raises * bet_size * players_in_pot
+	var call_be = 0.0
+	if (pot + need) > 0:
+		call_be = float(need) / float(pot + need)
+	var equity = float(eff_strength) / 100.0
+
+	# --- Bluff control ---
+	var free_bet = (need == 0)
+	var can_light_bluff = free_bet or (last_aggressor != p and raises == 0 and players_in_pot == 2)
+
+	var base_bluff_freq = 0.08
+	if position == "late":
+		base_bluff_freq = 0.14
+	base_bluff_freq -= 0.02 * float(players_in_pot - 2)
+	base_bluff_freq -= 0.02 * float(street_idx)
+	if base_bluff_freq < 0.02:
+		base_bluff_freq = 0.02
+	if base_bluff_freq > 0.15:
+		base_bluff_freq = 0.15
+
+	var do_bluff = false
+	if can_light_bluff and eff_strength < (raise_threshold - 8):
+		if rng.randf() < base_bluff_freq:
+			do_bluff = true
+
+	# --- Logic ---
+	if free_bet:
+		if eff_strength >= 92 and hp_p <= bet_size * 2 and can_allin:
 			return {"type": "allin"}
-		else:
-			return {"type": "check"}
-	else:
-		if strength < 25 and need >= bet_size:
-			return {"type": "fold"}
-		if strength >= 85 and hp[p] <= need + bet_size:
-			return {"type": "allin"}
-		if strength >= 60 and can_raise:
+		if (eff_strength >= raise_threshold and can_raise) or (do_bluff and can_raise):
 			return {"type": "raise"}
-		if hp[p] >= need:
-			return {"type": "call"}
+		return {"type": "check"}
+
+	var safety_margin = 0.04 + 0.01 * float(street_idx)
+	if equity + 0.000001 < (call_be - safety_margin):
+		if hp_p <= (need + bet_size) and equity > 0.25 and can_allin:
+			return {"type": "allin"}
+		return {"type": "fold"}
+
+	var raise_edge = 0.05 + 0.01 * float(2 - street_idx)
+	if (equity - call_be) >= raise_edge and eff_strength >= (raise_threshold - 5) and can_raise:
+		return {"type": "raise"}
+
+	if (eff_strength >= 90 and hp_p <= need + bet_size and can_allin) or (hp_p <= need and can_allin):
 		return {"type": "allin"}
+
+	if hp_p >= need:
+		return {"type": "call"}
+	return {"type": "allin"}
+
 
 func _rough_strength(hole: Array, board: Array[int]) -> int:
 	var total: int = 2 + board.size()
