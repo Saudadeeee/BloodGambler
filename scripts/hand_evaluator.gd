@@ -11,7 +11,7 @@ static func evaluate_five(cards: Array[int]) -> Array:
 	for c in cards:
 		ranks.append(CardUtils.rank_of(c))
 		suits.append(CardUtils.suit_of(c))
-	ranks.sort() # tăng dần
+	ranks.sort() 
 	var ranks_desc: Array[int] = ranks.duplicate()
 	ranks_desc.reverse()
 
@@ -19,12 +19,11 @@ static func evaluate_five(cards: Array[int]) -> Array:
 	var is_straight: bool = _is_straight(ranks)
 
 	var counts: Dictionary = _rank_counts(ranks)
-	var count_pairs: Array = _count_pairs(counts) # [[count:int, rank:int], ...] đã sort
-
+	var count_pairs: Array = _count_pairs(counts) 
 	if is_straight and is_flush:
 		var high: int = _straight_high(ranks)
 		return [8, [high]]
-
+		
 	if int(count_pairs[0][0]) == 4:
 		var four_rank: int = int(count_pairs[0][1])
 		var kicker: Array[int] = _kickers(ranks_desc, [four_rank])
@@ -67,7 +66,6 @@ static func compare_five(a_cards: Array[int], b_cards: Array[int]) -> int:
 	var B: Array = evaluate_five(b_cards)
 	return _compare_eval(A, B)
 
-# ---- Texas Hold'em (7 lá → lấy 5 lá mạnh nhất) ----
 
 static func evaluate_seven(cards: Array[int]) -> Array:
 	assert(cards.size() == 7)
@@ -109,7 +107,6 @@ static func best_five_from_seven(cards: Array[int]) -> Array[int]:
 				has_best = true
 	return best_keep
 
-# ---- Helpers ----
 
 static func _compare_eval(A: Array, B: Array) -> int:
 	if int(A[0]) != int(B[0]):
@@ -143,7 +140,7 @@ static func _rank_counts(ranks_sorted: Array[int]) -> Dictionary:
 	return d
 
 static func _count_pairs(counts: Dictionary) -> Array:
-	var arr: Array = [] # mỗi phần tử là [count:int, rank:int]
+	var arr: Array = [] 
 	for r in counts.keys():
 		arr.append([int(counts[r]), int(r)])
 	arr.sort_custom(func(a, b):

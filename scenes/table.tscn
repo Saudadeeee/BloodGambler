@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3 uid="uid://56dcl1upm32p"]
+
+[ext_resource type="Script" uid="uid://bgwlmfo5qy1hf" path="res://scripts/table.gd" id="1_02ppr"]
+[ext_resource type="PackedScene" uid="uid://d4md1gpm31egh" path="res://scenes/card.tscn" id="2_eotx8"]
+[ext_resource type="PackedScene" uid="uid://bjv1ekref8fw6" path="res://scenes/betting_ui.tscn" id="3_x8522"]
+
+[node name="Table" type="Node2D"]
+script = ExtResource("1_02ppr")
+card_scene = ExtResource("2_eotx8")
+
+[node name="DeckSpot" type="Node2D" parent="."]
+position = Vector2(527, 168)
+
+[node name="P0Spot" type="Node2D" parent="."]
+position = Vector2(364, 429)
+
+[node name="P1Spot" type="Node2D" parent="."]
+position = Vector2(686, 429)
+
+[node name="P2Spot" type="Node2D" parent="."]
+position = Vector2(934, 255)
+
+[node name="P3Spot" type="Node2D" parent="."]
+position = Vector2(84, 255)
+
+[node name="BoardSpot" type="Node2D" parent="."]
+position = Vector2(528, 255)
+
+[node name="BettingUI" parent="." instance=ExtResource("3_x8522")]

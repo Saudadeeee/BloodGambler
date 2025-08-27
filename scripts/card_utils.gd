@@ -1,28 +1,47 @@
-# res://scripts/card_utils.gd
+# res://scripts/CardUtils.gd
 class_name CardUtils
 
+# Mã hoá 1 lá bài = số nguyên 0..51
+# suit = id / 13  (0=SPADES, 1=HEARTS, 2=DIAMONDS, 3=CLUBS)
+# rank = id % 13  (0=02, 1=03, ..., 8=10, 9=JACK, 10=QUEEN, 11=KING, 12=ACE)
 
-static func rank_of(card: int) -> int:
-	return (card % 13) + 2
+static func suit_of(id: int) -> int:
+	return id / 13
 
-static func suit_of(card: int) -> int:
-	return int(card / 13)  # 0=Spade,1=Heart,2=Diamond,3=Club
+static func rank_of(id: int) -> int:
+	return id % 13
 
-static func rank_to_string(rank: int) -> String:
-	match rank:
-		11: return "J"
-		12: return "Q"
-		13: return "K"
-		14: return "A"
-		_:  return str(rank)
+static func suit_name_upper(id_or_suit: int) -> String:
+	var s := id_or_suit
+	if s >= 0 and s <= 51:
+		s = suit_of(s)
+	match s:
+		0: return "SPADES"
+		1: return "HEARTS"
+		2: return "DIAMONDS"
+		3: return "CLUBS"
+		_: return "SPADES"
 
-static func suit_to_string(suit: int) -> String:
-	match suit:
-		0: return "♠"
-		1: return "♥"
-		2: return "♦"
-		3: return "♣"
-		_: return "?"
+static func rank_filename(id_or_rank: int) -> String:
+	var r := id_or_rank
+	if r >= 0 and r <= 51:
+		r = rank_of(r)
+	# 0..8 => 02..10, 9..12 => JACK..ACE
+	if r <= 7:
+		# 0->02, 1->03, ..., 7->09
+		return str(2 + r).pad_zeros(2)
+	elif r == 8:
+		return "10"
+	elif r == 9:
+		return "JACK"
+	elif r == 10:
+		return "QUEEN"
+	elif r == 11:
+		return "KING"
+	else:
+		return "ACE"
 
-static func card_to_string(card: int) -> String:
-	return "%s%s" % [rank_to_string(rank_of(card)), suit_to_string(suit_of(card))]
+static func texture_path_for(id: int, base_dir: String = "res://art/cards") -> String:
+	var suit = suit_name_upper(id)
+	var rank = rank_filename(id)
+	return "%s/%s_%s.png" % [base_dir, suit, rank]

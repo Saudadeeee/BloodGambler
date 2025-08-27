@@ -1,38 +1,30 @@
-# res://scripts/deck.gd
+# res://scripts/Deck.gd
 class_name Deck
-extends RefCounted
-
-var _cards: Array[int] = []
-
+extends Resource
+var cards: Array[int] = []
+var rng := RandomNumberGenerator.new()
 func _init() -> void:
+	rng.randomize()
 	reset()
-
 func reset() -> void:
-	_cards.clear()
+	cards.clear()
 	for i in range(52):
-		_cards.append(i)
+		cards.append(i)
 	shuffle()
-
 func shuffle() -> void:
-	_cards.shuffle()
-
-func is_empty() -> bool:
-	return _cards.is_empty()
-
-func remaining() -> int:
-	return _cards.size()
-
+	for i in range(cards.size() - 1, 0, -1):
+		var j = rng.randi_range(0, i)
+		var tmp = cards[i]
+		cards[i] = cards[j]
+		cards[j] = tmp
 func draw_one() -> int:
-	if _cards.is_empty():
-		push_warning("Deck is empty; returning -1")
-		return -1
-	return _cards.pop_back()
+	if cards.is_empty():
+		push_warning("Deck empty, resetting.")
+		reset()
+	return cards.pop_back()
 
 func draw_many(n: int) -> Array[int]:
-	var res: Array[int] = []
-	for i in n:
-		if _cards.is_empty():
-			push_warning("Deck empty while drawing many")
-			break
-		res.append(_cards.pop_back())
-	return res
+	var out: Array[int] = []
+	for _i in range(n):
+		out.append(draw_one())
+	return out
