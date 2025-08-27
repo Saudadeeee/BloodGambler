@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dpkl2ppkfsme2"]
+
+[ext_resource type="Script" uid="uid://c16rg0rjhmfpk" path="res://scripts/BotBrain.gd" id="1_8eema"]
+
+[node name="BotBrain" type="Node2D"]
+script = ExtResource("1_8eema")

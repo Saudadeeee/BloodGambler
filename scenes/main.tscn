@@ -7,3 +7,12 @@
 script = ExtResource("1_0wfyh")
 
 [node name="Table" parent="." instance=ExtResource("1_o5qli")]
+players = null
+deal_face_up_for_player0 = null
+bet_small = null
+bet_big = null
+max_raises = null
+board_spacing_px = null
+predeal_board_facedown = null
+start_hp = null
+hand_spacing_px = null

@@ -9,21 +9,12 @@ offset_right = 40.0
 offset_bottom = 40.0
 script = ExtResource("1_o6p2v")
 
-[node name="InfoLabel" type="Label" parent="."]
-layout_mode = 0
-offset_left = 740.0
-offset_top = 572.0
-offset_right = 957.0
-offset_bottom = 621.0
-text = "Action:
-"
-
 [node name="HBoxContainer" type="HBoxContainer" parent="."]
 custom_minimum_size = Vector2(30, 0)
 layout_mode = 0
-offset_left = 737.0
-offset_top = 596.0
-offset_right = 1152.0
+offset_left = 605.0
+offset_top = 594.0
+offset_right = 1184.0
 offset_bottom = 646.0
 alignment = 1
 
@@ -50,7 +41,14 @@ layout_mode = 2
 text = "ALLIN
 "
 
+[node name="CheatButton" type="Button" parent="HBoxContainer"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "CHEAT
+"
+
 [connection signal="pressed" from="HBoxContainer/FoldButton" to="." method="_on_fold_button_pressed"]
 [connection signal="pressed" from="HBoxContainer/CheckCallButton" to="." method="_on_check_call_button_pressed"]
 [connection signal="pressed" from="HBoxContainer/RaiseButton" to="." method="_on_raise_button_pressed"]
 [connection signal="pressed" from="HBoxContainer/AllinButton" to="." method="_on_allin_button_pressed"]
+[connection signal="pressed" from="HBoxContainer/CheatButton" to="." method="_on_cheat_button_pressed"]

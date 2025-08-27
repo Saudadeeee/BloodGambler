@@ -1,297 +1,410 @@
-# res://scripts/Table.gd
 extends Node2D
 
 @export var players: int = 4
-@export var card_scene: PackedScene
-@export var deal_face_up_for_player0: bool = true
-
-@onready var deck_spot: Node2D = $DeckSpot
-@onready var p_spots: Array[Node2D] = [$P0Spot, $P1Spot, $P2Spot, $P3Spot]
-
-@export var bet_small: int = 4     # preflop, flop
-@export var bet_big: int = 8       # turn, river
+@export var start_hp: int = 100
+@export var bet_small: int = 4
+@export var bet_big: int = 8
 @export var max_raises: int = 3
+@export var predeal_board_facedown: bool = true
 
-@export var board_spacing_px: float = 72.0
-@onready var board_spot: Node2D = $BoardSpot
-@export var predeal_board_facedown: bool = true   # BẬT: chia sẵn 5 lá úp, lật theo street
+@export var dealer_path: NodePath
+@export var player_ctrl_path: NodePath
+@export var bot_brain_path: NodePath
 
-var board_ids: Array[int] = []       # id 5 lá board
-var board_cards: Array[Card] = []    # node Card 5 lá trên bàn
-var deck: Deck = Deck.new()
+var dealer: Dealer
+var player_ctrl: PlayerController
+var bot: BotBrain
 
-# ------------------------------------------------------
-# HOLE CARDS
-# ------------------------------------------------------
-func deal_opening_hole_cards() -> void:
-	deck.reset()
-	var rounds: int = 2
-	for r in range(rounds):
-		for seat in range(players):
-			var card_id: int = deck.draw_one()
-			var face_up: bool = deal_face_up_for_player0 and (seat == 0)
-			await _spawn_and_fly(card_id, seat, r, face_up)
+# Tay bài & node
+var hole_ids: Array = []      # [seat] -> Array[int]
+var hole_nodes: Array = []    # [seat] -> Array[Card]
 
-func _spawn_and_fly(card_id: int, seat: int, r_index: int, face_up: bool) -> void:
-	if card_scene == null:
-		push_error("Chưa gán card_scene (Card.tscn) cho Table.")
+# Trạng thái ván
+var hp: Array[int] = []
+var pot: int = 0
+var cheat_count: int = 0
+var wins_count: int = 0
+var hand_no: int = 1
+
+func _ready() -> void:
+	dealer = get_node_or_null(dealer_path) as Dealer
+	player_ctrl = get_node_or_null(player_ctrl_path) as PlayerController
+	bot = get_node_or_null(bot_brain_path) as BotBrain
+
+	if dealer == null or not dealer.has_method("reset_all"):
+		push_error("Dealer node không tồn tại hoặc chưa gắn script Dealer.gd")
 		return
-	var spot: Node2D = p_spots[seat]
 
-	var card: Card = card_scene.instantiate() as Card
-	add_child(card)
-	card.position = deck_spot.global_position
-	card.scale = Vector2(1, 1)
-	card.set_card(card_id, false)   # tạo úp trước
+	# HP
+	hp.resize(players)
+	for i in range(players):
+		hp[i] = start_hp
 
-	var offset: Vector2 = Vector2(48.0 * float(r_index), 0.0)
-	var target: Vector2 = spot.global_position + offset
+	await _deal_new_hand()
+	await _play_hand_flow()
+# Table.gd
+func _cleanup_hole_nodes() -> void:
+	# gỡ mọi lá trên tay người chơi
+	for s in range(hole_nodes.size()):
+		var arr := hole_nodes[s] as Array
+		for n in arr:
+			if is_instance_valid(n):
+				n.queue_free()
+	hole_nodes.clear()
+	hole_ids.clear()
 
-	var tw: Tween = create_tween()
-	tw.tween_property(card, "position", target, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	await tw.finished
+func _cleanup_before_new_hand() -> void:
+	_cleanup_hole_nodes()
+	# yêu cầu Dealer dọn board
+	if dealer != null and dealer.has_method("clear_board"):
+		dealer.clear_board()
 
-	if face_up:
-		await card.flip(true, 0.16)
+func _deal_new_hand() -> void:
+	# DỌN TRƯỚC
+	_cleanup_before_new_hand()
 
-	await get_tree().create_timer(0.06).timeout
+	# reset trạng thái
+	if dealer != null and dealer.has_method("reset_all"):
+		dealer.reset_all()
+	pot = 0
 
-# ------------------------------------------------------
-# BOARD LAYOUT + SPAWN
-# ------------------------------------------------------
-func _board_pos(i: int) -> Vector2:
-	# i: 0..4
-	var total_w: float = board_spacing_px * 4.0
-	var base_x: float = -total_w * 0.5
-	return board_spot.global_position + Vector2(base_x + float(i) * board_spacing_px, 0.0)
+	# tái tạo mảng tay
+	hole_ids.resize(players)
+	hole_nodes.resize(players)
+	for s in range(players):
+		hole_ids[s] = []
+		hole_nodes[s] = []
 
-func _spawn_board_card(card_id: int, i: int) -> Card:
-	var card: Card = card_scene.instantiate() as Card
-	add_child(card)
-	card.position = deck_spot.global_position
-	card.set_card(card_id, false) # úp
-	board_cards.append(card)
-	var tw: Tween = create_tween()
-	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(card, "position", _board_pos(i), 0.22)
-	return card
+	# chia 2 lá…
+	for r in range(2):
+		for seat in range(players):
+			var face_up: bool = (seat == 0)
+			var card_id: int = dealer.deck.draw_one()
+			var idx: int = (hole_ids[seat] as Array).size()
+			var node: Card = await dealer.fly_card_to_hand(card_id, seat, idx, idx, face_up)
+			(hole_ids[seat] as Array).append(card_id)
+			(hole_nodes[seat] as Array).append(node)
 
-# ------------------------------------------------------
-# PREDEAL 5 LÁ ÚP + REVEAL THEO STREET
-# ------------------------------------------------------
-func _predeal_board_facedown() -> void:
-	board_ids.clear()
-	board_cards.clear()
+	# predeal board
+	if predeal_board_facedown:
+		await dealer.predeal_board_facedown()
 
-	# burn1 + flop(3)
-	deck.draw_one()                            # burn 1
-	var flop: Array[int] = deck.draw_many(3)
+func _cards_to_string(cards: Array) -> String:
+	var parts: Array[String] = []
+	for c in cards:
+		var id_card: int = int(c)
+		var r: int = CardUtils.rank_of(id_card)
+		var s: int = CardUtils.suit_of(id_card)
 
-	# burn2 + turn(1)
-	deck.draw_one()                            # burn 2
-	var turn: int = deck.draw_one()
+		var rl: String
+		match r:
+			14, 1: rl = "A"
+			13: rl = "K"
+			12: rl = "Q"
+			11: rl = "J"
+			10: rl = "10"
+			_: rl = str(r)
 
-	# burn3 + river(1)
-	deck.draw_one()                            # burn 3
-	var river: int = deck.draw_one()
+		var sl: String
+		match s:
+			0: sl = "♣"
+			1: sl = "♦"
+			2: sl = "♥"
+			3: sl = "♠"
+			_: sl = "?"
 
-	board_ids.append_array([flop[0], flop[1], flop[2], turn, river])
+		parts.append("%s%s" % [rl, sl])
+	return ", ".join(parts)
 
-	# Spawn 5 lá úp sẵn
-	for i in range(5):
-		_spawn_board_card(board_ids[i], i)
-		await get_tree().process_frame
-		await get_tree().create_timer(0.04).timeout
+func _print_holes(active: Array) -> void:
+	for p in active:
+		var seat_i: int = int(p)
+		print("Player %d: %s" % [seat_i, _cards_to_string(hole_ids[seat_i] as Array)])
 
-func _reveal_flop() -> void:
-	for i in range(3):
-		await board_cards[i].flip(true, 0.16)
-		await get_tree().create_timer(0.04).timeout
+func _print_hp() -> void:
+	var out: Array[String] = []
+	for i in range(players):
+		out.append("P%d:%d" % [i, hp[i]])
+	print("HP:", ", ".join(out))
 
-func _reveal_turn() -> void:
-	await board_cards[3].flip(true, 0.16)
 
-func _reveal_river() -> void:
-	await board_cards[4].flip(true, 0.16)
+func _can_cheat(street: String) -> bool:
+	var allow := (street == "flop" and dealer.board_revealed == 3)
+	if player_ctrl != null and player_ctrl.has_method("can_cheat"):
+		return player_ctrl.can_cheat(street, dealer.board_revealed)
+	return allow
 
-# ------------------------------------------------------
-# CÁC HÀNH VI CŨ (fallback nếu tắt predeal)
-# ------------------------------------------------------
-func _burn_one() -> void:
-	deck.draw_one()
+func _do_cheat(seat: int) -> void:
+	if seat != 0:
+		return
+	if not _can_cheat("flop"):
+		print("Cheat bị chặn (chỉ FLOP sau khi lật 3 lá).")
+		return
 
-func _deal_flop() -> void:
-	board_ids.clear()
-	board_cards.clear()
-	_burn_one()
-	var three: Array[int] = deck.draw_many(3)
-	for i in range(3):
-		board_ids.append(three[i])
-		_spawn_board_card(three[i], i)
-		await get_tree().process_frame
-	for i in range(3):
-		await board_cards[i].flip(true, 0.16)
-		await get_tree().create_timer(0.04).timeout
+	cheat_count += 1
+	var id: int = dealer.deck.draw_one()
+	var idx: int = (hole_ids[0] as Array).size()
+	var node: Card = await dealer.fly_card_to_hand(id, 0, idx, idx, true)
+	(hole_ids[0] as Array).append(id)
+	(hole_nodes[0] as Array).append(node)
 
-func _deal_turn() -> void:
-	_burn_one()
-	var id: int = deck.draw_one()
-	board_ids.append(id)
-	var c: Card = _spawn_board_card(id, 3)
-	await get_tree().process_frame
-	await c.flip(true, 0.16)
-
-func _deal_river() -> void:
-	_burn_one()
-	var id: int = deck.draw_one()
-	board_ids.append(id)
-	var c: Card = _spawn_board_card(id, 4)
-	await get_tree().process_frame
-	await c.flip(true, 0.16)
-
-# ------------------------------------------------------
-# UI / BOT / BET ROUND (đơn giản)
-# ------------------------------------------------------
-func _ask_player_action(street: String, need: int, bet_unit: int, can_raise: bool, can_allin: bool) -> String:
-	if has_node("BettingUI"):
-		var ui: BettingUI = $BettingUI as BettingUI
-		ui.prompt(street, need, bet_unit, can_raise, can_allin)
-		await ui.action_chosen
-		return String(ui.get_choice())
-	if need == 0:
-		return "check"
+	var risk: float = float(wins_count * 10 + cheat_count * 5)
+	if randf() < risk / 100.0:
+		hp[0] = max(0, hp[0] - 20)
+		print("Bị phát hiện khi cheat! -20 HP (risk=%.1f%%)" % risk)
 	else:
-		return "call"
+		print("Cheat thành công. risk=%.1f%%" % risk)
 
-func _bot_action(need: int, bet_unit: int, raises: int) -> String:
-	if need == 0:
-		if (randi() % 5 == 0 and raises < max_raises):
-			return "raise"
-		else:
-			return "check"
-	else:
-		if need >= bet_unit * 2 and (randi() % 4 == 0):
-			return "fold"
-		if raises < max_raises and (randi() % 6 == 0):
-			return "raise"
-		return "call"
-
-func _bet_round(active_seats: Array[int], street: String, bet_unit: int) -> bool:
-	if active_seats.size() <= 1:
+# ---------------- Betting Core ----------------
+func _bet_round(active: Array, street: String, bet_unit: int) -> bool:
+	if active.size() <= 1:
 		return true
+
 	var contrib: Dictionary = {}
-	for s in active_seats:
-		contrib[s] = 0
+	for s in active:
+		contrib[int(s)] = 0
 	var to_call: int = 0
 	var raises: int = 0
-	var players_to_act: int = active_seats.size()
+	var players_to_act: int = active.size()
 	var idx: int = 0
 
-	while true:
-		if active_seats.size() <= 1:
-			return true
-		var seat: int = active_seats[idx]
-		var need: int = to_call - int(contrib[seat])
-		if need < 0:
-			need = 0
+	print("[%s] pot=%d, bet=%d" % [street.capitalize(), pot, bet_unit])
 
-		var can_raise: bool = (raises < max_raises)
+	while true:
+		if active.size() <= 1:
+			return true
+
+		var seat: int = int(active[idx])
+		var need: int = to_call - int(contrib[seat])
+		if need < 0: need = 0
+
+		var can_raise: bool = (raises < max_raises) and (hp[seat] > need + bet_unit)
 		var act: String = ""
 		if seat == 0:
-			act = await _ask_player_action(street, need, bet_unit, can_raise, true)
+			var cheat_enabled: bool = _can_cheat(street)
+			if player_ctrl != null and player_ctrl.has_method("ask_action"):
+				act = await player_ctrl.ask_action(street, need, bet_unit, can_raise, hp[seat] > 0, cheat_enabled)
+			else:
+				var ui := get_node_or_null("BettingUI") as BettingUI
+				if ui:
+					ui.prompt(street, need, bet_unit, can_raise, hp[seat] > 0, cheat_enabled)
+					await ui.action_chosen
+					act = ui.get_choice()
+				else:
+					act = "check" if need == 0 else "call"
 		else:
-			act = _bot_action(need, bet_unit, raises)
+			act = bot.decide_action(need, bet_unit, raises, max_raises, hp[seat], street)
 
 		var advance_idx: bool = true
 
 		match act:
+			"cheat":
+				if _can_cheat(street):
+					_do_cheat(seat)
+					players_to_act -= 1
+				else:
+					print("P%d thử CHEAT nhưng bị chặn." % seat)
+					advance_idx = false
+
 			"fold":
-				active_seats.erase(seat)
+				print("  P%d folds" % seat)
+				active.erase(seat)
 				players_to_act = max(players_to_act - 1, 0)
 				advance_idx = false
-				if active_seats.size() <= 1:
+				if active.size() <= 1:
+					_award_when_all_fold(active)
 					return true
-				if idx >= active_seats.size():
+				if idx >= active.size():
 					idx = 0
+
 			"check":
 				if need != 0:
 					act = "call"
+					advance_idx = false
 					continue
+				print("  P%d checks" % seat)
 				players_to_act -= 1
+
 			"call":
-				var pay: int = min(need, 999999)
+				var pay: int = min(need, hp[seat])
+				hp[seat] -= pay
+				contrib[seat] = int(contrib[seat]) + pay
+				pot += pay
+				print("  P%d calls (%d)" % [seat, pay])
 				players_to_act -= 1
+
 			"raise":
-				if raises >= max_raises:
-					act = "call"
-					continue
-				var pay_need: int = need
-				var add: int = bet_unit
-				to_call += (pay_need + add)
-				raises += 1
-				players_to_act = active_seats.size() - 1
+				if raises >= max_raises or not can_raise:
+					var pay_cap: int = min(need, hp[seat])
+					hp[seat] -= pay_cap
+					contrib[seat] = int(contrib[seat]) + pay_cap
+					pot += pay_cap
+					print("  P%d calls (cap reached) (%d)" % [seat, pay_cap])
+					players_to_act -= 1
+				else:
+					var pay_need: int = min(need, hp[seat])
+					hp[seat] -= pay_need
+					contrib[seat] = int(contrib[seat]) + pay_need
+					pot += pay_need
+
+					var add: int = min(bet_unit, hp[seat])
+					hp[seat] -= add
+					contrib[seat] = int(contrib[seat]) + add
+					pot += add
+
+					to_call = int(contrib[seat])
+					raises += 1
+					players_to_act = active.size() - 1
+					print("  P%d raises to %d (need=%d + add=%d)" % [seat, to_call, pay_need, add])
+
+			"allin":
+				var pay_all: int = hp[seat]
+				if pay_all > 0:
+					hp[seat] = 0
+					contrib[seat] = int(contrib[seat]) + pay_all
+					pot += pay_all
+				if int(contrib[seat]) > to_call:
+					to_call = int(contrib[seat])
+					raises += 1
+					players_to_act = active.size() - 1
+					print("  P%d ALL-IN to %d" % [seat, to_call])
+				else:
+					print("  P%d ALL-IN (call)" % seat)
+					players_to_act -= 1
+
 			_:
-				var pay2: int = min(need, 999999)
-				players_to_act -= 1
+				if need == 0:
+					print("  P%d checks" % seat)
+					players_to_act -= 1
+				else:
+					var pay_d: int = min(need, hp[seat])
+					hp[seat] -= pay_d
+					contrib[seat] = int(contrib[seat]) + pay_d
+					pot += pay_d
+					print("  P%d calls (%d)" % [seat, pay_d])
+					players_to_act -= 1
 
 		if players_to_act <= 0:
 			break
 		if advance_idx:
-			idx = (idx + 1) % active_seats.size()
+			idx = (idx + 1) % active.size()
 
+	print("  -> Street end. pot=%d" % pot)
 	return false
 
-# ------------------------------------------------------
-# FLOW 1 VÁN
-# ------------------------------------------------------
-func run_hand_with_board() -> void:
-	var active: Array[int] = []
-	var total_players: int = players
-	for s in range(total_players):
-		active.append(s)
+# ---------------- Showdown ----------------
+func _best_eval5_any(cards: Array) -> Array:
+	var n: int = cards.size()
+	var best: Array = []
+	var has_best: bool = false
+	for a in range(n - 4):
+		for b in range(a + 1, n - 3):
+			for c in range(b + 1, n - 2):
+				for d in range(c + 1, n - 1):
+					for e in range(d + 1, n):
+						var sel: Array[int] = [
+							int(cards[a]), int(cards[b]),
+							int(cards[c]), int(cards[d]), int(cards[e])
+						]
+						var ev: Array = HandEvaluator.evaluate_five(sel)
+						if not has_best or HandEvaluator._compare_eval(ev, best) > 0:
+							best = ev
+							has_best = true
+	return best
 
-	# PRE-FLOP: chia sẵn 5 lá úp nếu bật cờ
-	if predeal_board_facedown:
-		await _predeal_board_facedown()
+func _showdown_and_payout(active: Array) -> void:
+	var best_eval: Array = []
+	var winners: Array = []
+	var has_best: bool = false
 
-	var ended: bool = await _bet_round(active, "preflop", bet_small)
-	if ended:
-		return
+	for p in active:
+		var seat: int = int(p)
+		var cards: Array = (hole_ids[seat] as Array).duplicate()
+		cards.append_array(dealer.board_ids)
+		var ev: Array = _best_eval5_any(cards)
+		if not has_best or HandEvaluator._compare_eval(ev, best_eval) > 0:
+			best_eval = ev
+			winners = [seat]
+			has_best = true
+		elif HandEvaluator._compare_eval(ev, best_eval) == 0:
+			winners.append(seat)
 
-	# FLOP
-	if predeal_board_facedown:
-		await _reveal_flop()
+	if winners.size() == 1:
+		hp[int(winners[0])] += pot
 	else:
-		await _deal_flop()
-	ended = await _bet_round(active, "flop", bet_small)
-	if ended:
-		return
+		var share: int = pot / winners.size()
+		var rem: int = pot % winners.size()
+		for i in range(winners.size()):
+			var add_each: int = share + (1 if i < rem else 0)
+			hp[int(winners[i])] += add_each
 
-	# TURN
-	if predeal_board_facedown:
-		await _reveal_turn()
-	else:
-		await _deal_turn()
-	ended = await _bet_round(active, "turn", bet_big)
-	if ended:
-		return
+	# DEBUG
+	for p in active:
+		var seat2: int = int(p)
+		print("Player %d: %s" % [seat2, _cards_to_string(hole_ids[seat2] as Array)])
+	print("Board: %s" % _cards_to_string(dealer.board_ids))
+	var names: Array[String] = []
+	for w in winners:
+		names.append("P%d" % int(w))
+	print("==> Winner(s): %s  (%s %s) | Pot=%d" %
+		[", ".join(names), HandEvaluator.hand_name(int(best_eval[0])), str(best_eval[1]), pot])
 
-	# RIVER
-	if predeal_board_facedown:
-		await _reveal_river()
-	else:
-		await _deal_river()
-	ended = await _bet_round(active, "river", bet_big)
-	if ended:
-		return
-	# SHOWDOWN: (để sau)
+	pot = 0
+	_print_hp()
 
-# ------------------------------------------------------
-# READY
-# ------------------------------------------------------
-func _ready() -> void:
-	if p_spots.size() < players:
-		push_error("Thiếu Node P#Spot so với số người chơi.")
-		return
-	await deal_opening_hole_cards()
-	await run_hand_with_board()
+func _award_when_all_fold(active: Array) -> void:
+	if active.size() == 1:
+		var s: int = int(active[0])
+		hp[s] += pot
+		print("==> Everyone folded. P%d wins pot=%d" % [s, pot])
+		pot = 0
+	_print_hp()
+
+# ---------------- Flow ----------------
+func _active_seats() -> Array:
+	var a: Array = []
+	for s in range(players):
+		if hp[s] > 0:
+			a.append(s)
+	return a
+
+func _play_hand_flow() -> void:
+	while _active_seats().size() > 1:
+		print("\n=== HAND %d ===" % hand_no)
+		hand_no += 1
+		var active: Array = _active_seats()
+		_print_holes(active)
+
+		# PRE-FLOP
+		var ended: bool = await _bet_round(active, "preflop", bet_small)
+		if ended:
+			await _deal_new_hand()
+			continue
+
+		# FLOP
+		if predeal_board_facedown:
+			await dealer.reveal_flop()
+		ended = await _bet_round(active, "flop", bet_small)
+		if ended:
+			await _deal_new_hand()
+			continue
+
+		# TURN
+		if predeal_board_facedown:
+			await dealer.reveal_turn()
+		ended = await _bet_round(active, "turn", bet_big)
+		if ended:
+			await _deal_new_hand()
+			continue
+
+		# RIVER
+		if predeal_board_facedown:
+			await dealer.reveal_river()
+		ended = await _bet_round(active, "river", bet_big)
+		if ended:
+			await _deal_new_hand()
+			continue
+
+		# SHOWDOWN
+		_showdown_and_payout(active)
+		await _deal_new_hand()

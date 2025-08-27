@@ -1,12 +1,26 @@
-[gd_scene load_steps=4 format=3 uid="uid://56dcl1upm32p"]
+[gd_scene load_steps=6 format=3 uid="uid://56dcl1upm32p"]
 
 [ext_resource type="Script" uid="uid://bgwlmfo5qy1hf" path="res://scripts/table.gd" id="1_02ppr"]
-[ext_resource type="PackedScene" uid="uid://d4md1gpm31egh" path="res://scenes/card.tscn" id="2_eotx8"]
+[ext_resource type="PackedScene" uid="uid://dpkl2ppkfsme2" path="res://scenes/bot_brain.tscn" id="2_u03e6"]
+[ext_resource type="PackedScene" uid="uid://ddfnwcnmeijop" path="res://scenes/player_controller.tscn" id="3_2f5gb"]
+[ext_resource type="PackedScene" uid="uid://7jcui42jcaey" path="res://scenes/dealer.tscn" id="3_olh0b"]
 [ext_resource type="PackedScene" uid="uid://bjv1ekref8fw6" path="res://scenes/betting_ui.tscn" id="3_x8522"]
 
 [node name="Table" type="Node2D"]
 script = ExtResource("1_02ppr")
-card_scene = ExtResource("2_eotx8")
+dealer_path = NodePath("Dealer")
+player_ctrl_path = NodePath("PlayerController")
+bot_brain_path = NodePath("BotBrain")
+
+[node name="BotBrain" parent="." instance=ExtResource("2_u03e6")]
+
+[node name="PlayerController" parent="." instance=ExtResource("3_2f5gb")]
+ui_path = NodePath("../BettingUI")
+
+[node name="Dealer" parent="." instance=ExtResource("3_olh0b")]
+deck_spot_path = NodePath("../DeckSpot")
+board_spot_path = NodePath("../BoardSpot")
+p_spot_paths = Array[NodePath]([NodePath("../P0Spot"), NodePath("../P1Spot"), NodePath("../P2Spot"), NodePath("../P3Spot")])
 
 [node name="DeckSpot" type="Node2D" parent="."]
 position = Vector2(527, 168)
