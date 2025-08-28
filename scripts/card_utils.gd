@@ -41,7 +41,7 @@ static func rank_filename(id_or_rank: int) -> String:
 	else:
 		return "ACE"
 
-static func texture_path_for(id: int, base_dir: String = "res://art/cards") -> String:
+static func texture_path_for(id: int, base_dir: String = "res://assets/card_deck") -> String:
 	var suit = suit_name_upper(id)
 	var rank = rank_filename(id)
 	return "%s/%s_%s.png" % [base_dir, suit, rank]

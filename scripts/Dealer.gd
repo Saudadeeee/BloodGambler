@@ -9,39 +9,30 @@ class_name Dealer
 # Kéo thả các node vị trí vào đây
 @export var deck_spot_path: NodePath
 @export var board_spot_path: NodePath
-@export var p_spot_paths: Array[NodePath] = []   # P0Spot..P3Spot theo thứ tự ghế
+@export var p_spot_paths: Array[NodePath] = []   
 
 # ---------- Scene refs ----------
 var deck_spot: Node2D
 var board_spot: Node2D
-var p_spots: Array = []          # [seat] -> Node2D
+var p_spots: Array = []          
 
 # ---------- State ----------
 var deck: Deck = Deck.new()
 
-var board_ids: Array[int] = []   # 5 id lá board
-var board_cards: Array[Card] = []    # 5 node lá board
-var board_revealed: int = 0      # 0 / 3 / 4 / 5
+var board_ids: Array[int] = []  
+var board_cards: Array[Card] = []    
+var board_revealed: int = 0    
 
 func _ready() -> void:
-	# Lấy node theo path
 	deck_spot = get_node(deck_spot_path) as Node2D
 	board_spot = get_node(board_spot_path) as Node2D
-
 	p_spots.clear()
 	for p in p_spot_paths:
 		var n := get_node_or_null(p) as Node2D
 		if n != null:
 			p_spots.append(n)
-	# Cảnh báo nếu thiếu
-	if p_spots.size() == 0:
-		push_error("Dealer: p_spot_paths trống. Kéo thả P0Spot..PnSpot vào Inspector.")
-	if card_scene == null:
-		push_error("Dealer: CHƯA gán card_scene (Card.tscn).")
 
-# =========================================================
-# ============  DỌN DẸP / RESET  ==========================
-# =========================================================
+
 func clear_board() -> void:
 	for c in board_cards:
 		if is_instance_valid(c):
@@ -54,9 +45,6 @@ func reset_all() -> void:
 	deck.reset()
 	clear_board()
 
-# =========================================================
-# ============  VỊ TRÍ / SPAWN  ===========================
-# =========================================================
 func _board_pos(i: int) -> Vector2:
 	# i 0..4
 	var total_w := board_spacing_px * 4.0
@@ -64,7 +52,7 @@ func _board_pos(i: int) -> Vector2:
 	return board_spot.global_position + Vector2(base_x + float(i) * board_spacing_px, 0.0)
 
 func _hand_pos_for(seat: int, index_in_hand: int, total_in_hand: int) -> Vector2:
-	# Căn giữa cụm lá quanh P#Spot
+
 	if seat < 0 or seat >= p_spots.size():
 		return Vector2.ZERO
 	var total_w := hand_spacing_px * float(max(total_in_hand - 1, 0))
@@ -74,9 +62,9 @@ func _hand_pos_for(seat: int, index_in_hand: int, total_in_hand: int) -> Vector2
 
 func _spawn_board_card(card_id: int, i: int) -> Card:
 	var card := card_scene.instantiate() as Card
-	add_child(card)                # card là con của Dealer
+	add_child(card)         
 	card.position = deck_spot.global_position
-	card.set_card(card_id, false)  # úp
+	card.set_card(card_id, false) 
 	board_cards.append(card)
 	var tw := create_tween()
 	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
